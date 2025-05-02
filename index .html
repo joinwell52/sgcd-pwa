@@ -1,0 +1,1440 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0a1a2f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="赛格车典APP">
+<link rel="apple-touch-icon" href="./icons/icon-192x192.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赛格车典APP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        :root {
+            --accent-magenta: #FFA500;
+            --accent-green: #4caf50;
+            --accent-orange: #ff9100;
+            --accent-purple: #ab47bc;
+            --primary-cyan: #00ddeb;
+            --contract-icon-color: #f97316;
+            --vehicle-icon-color: #16a34a;
+        }
+        body.light-theme {
+            --primary-bg: linear-gradient(135deg, #fafbff, #e6f3ff);
+            --container-bg: #fafbff;
+            --text-color: #1a2a44;
+            --border-color: rgba(59, 130, 246, 0.2);
+            --accent-color: #3b82f6;
+            --secondary-bg: linear-gradient(145deg, #fafbff, #f5f7fa);
+            --shadow-color: rgba(59, 130, 246, 0.2);
+            background: var(--primary-bg);
+            color: var(--text-color);
+        }
+        body.dark-theme {
+            --primary-bg: linear-gradient(135deg, #0a1a2f, #1e3a5f);
+            --container-bg: #0f223d;
+            --text-color: #e6f0fa;
+            --border-color: rgba(0, 221, 235, 0.2);
+            --accent-color: #00ddeb;
+            --secondary-bg: linear-gradient(145deg, #1a2a44, #0f223d);
+            --shadow-color: rgba(0, 221, 235, 0.3);
+            background: var(--primary-bg);
+            color: var(--text-color);
+        }
+        body {
+            transition: background 0.5s ease, color 0.5s ease;
+        }
+        .app-container {
+            max-width: 414px;
+            margin: 20px auto;
+            min-height: 100vh;
+            position: relative;
+            box-shadow: 0 8px 40px var(--shadow-color);
+            border-radius: 24px;
+            overflow: hidden;
+            background: var(--container-bg);
+            border: 1px solid var(--border-color);
+            transition: background 0.5s ease, border 0.5s ease;
+        }
+        .user-header {
+            color: white;
+            padding: 30px 20px 120px;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 4px 20px var(--shadow-color);
+            background-size: cover;
+            background-position: center;
+            width: 100%;
+            transition: padding 0.3s ease, width 0.3s ease, margin 0.3s ease;
+        }
+        .user-header.compact {
+            padding: 30px 20px 60px !important;
+            width: calc(100%);
+            margin: 0 auto;
+            border-radius: 0 0 12px 12px;
+        }
+        .light-theme .user-header {
+            background: url('https://img.tukuppt.com/ad_preview/00/12/76/5dd3db2180263.jpg!/fw/980') center center / cover no-repeat;
+        }
+        .dark-theme .user-header {
+            background: url('https://img.shetu66.com/2023/06/13/1686643099760171.png') center center / cover no-repeat;
+        }
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+        .theme-toggle i {
+            font-size: 18px;
+            color: #ffffff;
+        }
+        #home-page .page-title {
+            display: none;
+        }
+        .user-header > div {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .user-avatar {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: var(--secondary-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            overflow: hidden;
+            border: 3px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 2px 10px var(--shadow-color);
+        }
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-name {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+        }
+        .user-name .badge {
+            font-size: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 10px;
+            border-radius: 12px;
+            margin-left: 10px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .user-account {
+            font-size: 13px;
+            opacity: 0.9;
+            letter-spacing: 0.5px;
+        }
+        .page-title {
+            padding: 12px 20px;
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            background: var(--container-bg);
+            color: var(--accent-color);
+            transition: background 0.5s ease, color 0.5s ease;
+        }
+        .page-title i {
+            margin-right: 8px;
+            color: var(--accent-color);
+        }
+        .content {
+            padding-bottom: 90px;
+        }
+        .dashboard-section {
+            padding: 15px;
+            margin: 12px 12px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--shadow-color);
+            background: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.5s ease;
+        }
+        .dashboard-section:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px var(--shadow-color);
+        }
+        .dashboard-section h2 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+        }
+        .dashboard-section h2 i {
+            margin-right: 8px;
+            font-size: 18px;
+            color: var(--accent-color);
+        }
+        .dashboard-section.quick-menu-section {
+            position: absolute;
+            top: 120px;
+            left: 5px;
+            right: 5px;
+            z-index: 2;
+            border-radius: 6px;
+            box-shadow: 0 10px 30px var(--shadow-color);
+            padding: 12px;
+            background: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(8px);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.5s ease;
+        }
+        .dashboard-section.quick-menu-section:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 40px var(--shadow-color);
+        }
+        .dashboard-section.common-apps-section {
+            margin-top: 80px;
+            min-height: 50px;
+            position: relative;
+            z-index: 1;
+            visibility: visible;
+            display: block;
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
+        .common-apps-section h2 {
+            cursor: pointer;
+            display: block;
+            visibility: visible;
+            opacity: 1;
+        }
+        .common-apps-section .quick-menu {
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+        }
+        .common-apps-section.collapsed .quick-menu {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+        }
+        .common-apps-section:not(.collapsed) .quick-menu {
+            max-height: 200px;
+            opacity: 1;
+        }
+        .dashboard-section.chart-section {
+            transition: transform 0.3s ease;
+        }
+        .common-apps-section.collapsed ~ .chart-section {
+            transform: translateY(-40px);
+        }
+        #home-page .dashboard-section:not(.quick-menu-section):first-of-type {
+            margin-top: 120px;
+        }
+        .dashboard-section.quick-menu-section + .dashboard-section {
+            margin-top: 80px;
+        }
+        .metrics-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .metric-item {
+            flex: 1;
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
+            background: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 3px 10px var(--shadow-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: all 0.3s ease;
+            animation: glowPulse 2.5s infinite ease-in-out;
+            cursor: pointer;
+        }
+        .metric-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px var(--shadow-color);
+            background: linear-gradient(145deg, var(--secondary-bg), var(--accent-color));
+        }
+        .metric-item.active {
+            background: linear-gradient(145deg, var(--accent-color), #1e90ff);
+            color: #ffffff;
+            box-shadow: 0 6px 15px var(--shadow-color);
+        }
+        .metric-item i {
+            font-size: 20px;
+            margin-bottom: 6px;
+        }
+		/* 业务总览，三个*/
+        .metric-item:nth-child(1) i { color: var(--accent-orange); }
+        .metric-item:nth-child(2) i { color: var(--contract-icon-color); }
+        .metric-item:nth-child(3) i { color: var(--accent-magenta); }
+        .metric-value {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: var(--text-color);
+        }
+        .metric-label {
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            color: #4a5a74;
+        }
+        .dark-theme .metric-label {
+            color: #90a4ae;
+        }
+        .quick-menu {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .menu-item {
+            border-radius: 10px;
+            padding: 10px 4px;
+            text-align: center;
+            font-size: 11px;
+            background: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px var(--shadow-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: all 0.3s ease;
+            color: var(--text-color);
+            animation: glowPulse 2.5s infinite ease-in-out;
+        }
+        .menu-item i {
+            font-size: 20px;
+            margin-bottom: 4px;
+            transition: transform 0.3s ease, filter 0.3s ease;
+        }
+        .menu-item:nth-child(1) i { color: var(--accent-color); }
+        .menu-item:nth-child(2) i { color: var(--vehicle-icon-color); }
+        .menu-item:nth-child(3) i { color: var(--accent-magenta); }
+        .menu-item:nth-child(4) i { color: var(--accent-green); }
+        .menu-item:nth-child(5) i { color: var(--accent-orange); }
+        .menu-item:nth-child(6) i { color: var(--accent-purple); }
+        .menu-item:hover {
+            background: linear-gradient(145deg, var(--secondary-bg), var(--accent-color));
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--shadow-color);
+            color: #ffffff;
+        }
+        .menu-item:hover i {
+            transform: scale(1.15);
+            filter: drop-shadow(0 2px 5px var(--shadow-color));
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .stat-card {
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            background: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 12px var(--shadow-color);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: glowPulse 2.5s infinite ease-in-out;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--border-color), transparent);
+            transition: all 0.5s ease;
+            opacity: 0;
+        }
+        .stat-card:hover::before {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px var(--shadow-color);
+        }
+        .stat-card .number {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: var(--text-color);
+            transition: color 0.3s ease;
+        }
+        .stat-card .warning {
+            color: var(--accent-magenta);
+        }
+        .stat-card .success {
+            color: var(--accent-green);
+        }
+        .stat-card .info {
+            color: var(--accent-orange);
+        }
+        .stat-card .label {
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            color: #4a5a74;
+        }
+        .dark-theme .stat-card .label {
+            color: #90a4ae;
+        }
+        .business-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 9;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            background: var(--container-bg);
+            transition: background 0.5s ease;
+        }
+        .business-tab {
+            flex: 1;
+            text-align: center;
+            padding: 12px 0;
+            font-size: 14px;
+            color: #4a5a74;
+            transition: all 0.3s ease, transform 0.2s ease, background 0.3s ease;
+            position: relative;
+            cursor: pointer;
+        }
+        .dark-theme .business-tab {
+            color: #90a4ae;
+        }
+        .business-tab::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--accent-color);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+        .business-tab.active::after {
+            transform: scaleX(1);
+        }
+        .business-tab.active {
+            color: var(--accent-color);
+            font-weight: 600;
+            background: linear-gradient(145deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.2));
+            transform: scale(1.05);
+        }
+        .business-tab:hover {
+            background: linear-gradient(145deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.1));
+            transform: scale(1.03);
+        }
+        .business-tab:nth-child(1) i { color: var(--accent-color); }
+        .business-tab:nth-child(2) i { color: var(--accent-magenta); }
+        .business-tab:nth-child(3) i { color: var(--accent-green); }
+        .submenu-list {
+            padding: 10px 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        .submenu-list.submenu-transition {
+            transform: scale(0.98);
+            opacity: 0.7;
+        }
+        .submenu-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--container-bg);
+            transition: all 0.3s ease;
+            animation: fadeInSlide 0.4s ease-out forwards;
+        }
+        .submenu-item.first-in-category {
+            margin-top: 15px;
+        }
+        .submenu-item:hover {
+            background: linear-gradient(145deg, var(--secondary-bg), var(--accent-color));
+            transform: translateX(4px);
+            box-shadow: 0 2px 10px var(--shadow-color);
+            color: #ffffff;
+        }
+        .submenu-item i {
+            width: 20px;
+            text-align: center;
+            margin-right: 10px;
+        }
+        .submenu-item .text {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .submenu-item .arrow {
+            font-size: 12px;
+            color: #4a5a74;
+        }
+        .dark-theme .submenu-item .arrow {
+            color: #90a4ae;
+        }
+        .tab-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            border-top: 1px solid var(--border-color);
+            max-width: 414px;
+            margin: 0 auto;
+            z-index: 10;
+            box-shadow: 0 -4px 20px var(--shadow-color);
+            padding: 8px 0;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            background: var(--secondary-bg);
+            transition: background 0.5s ease;
+        }
+        .tab-item {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            font-size: 11px;
+            color: #4a5a74;
+            transition: all 0.3s ease;
+        }
+        .dark-theme .tab-item {
+            color: #90a4ae;
+        }
+        .tab-item.active {
+            color: var(--accent-color);
+            transform: translateY(-4px);
+        }
+        .tab-icon {
+            font-size: 20px;
+            margin-bottom: 4px;
+            transition: all 0.3s ease;
+        }
+        .tab-item:nth-child(1) .tab-icon { color: var(--accent-color); }
+        .tab-item:nth-child(2) .tab-icon { color: var(--primary-cyan); }
+        .tab-item:nth-child(3) .tab-icon { color: var(--accent-magenta); }
+        .tab-item:nth-child(4) .tab-icon { color: var(--accent-green); }
+        .tab-item:nth-child(5) .tab-icon { color: var(--accent-orange); }
+        .tab-item.active .tab-icon {
+            transform: scale(1.15);
+            filter: drop-shadow(0 2px 5px var(--shadow-color));
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+        }
+        .chart-container {
+            height: 300px;
+            margin: 15px 0;
+            border-radius: 12px;
+            padding: 15px;
+            background: var(--secondary-bg);
+            box-shadow: 0 4px 20px var(--shadow-color);
+            border: 1px solid var(--border-color);
+            transition: background 0.5s ease;
+            transform: perspective(1000px) rotateX(0deg);
+            transform-origin: center bottom;
+        }
+        #chart-title {
+            color: var(--accent-color);
+            transition: color 0.3s ease;
+        }
+        .my-account-menu {
+            margin: 10px;
+        }
+        .account-menu-item {
+            padding: 12px 15px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--secondary-bg);
+            box-shadow: 0 2px 12px var(--shadow-color);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            animation: glowPulse 2.5s infinite ease-in-out;
+        }
+        .account-menu-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px var(--shadow-color);
+        }
+        .account-menu-item i {
+            margin-right: 10px;
+            width: 18px;
+            text-align: center;
+        }
+        .account-menu-item:nth-child(1) i { color: var(--accent-color); }
+        .account-menu-item:nth-child(2) i { color: var(--primary-cyan); }
+        .account-menu-item:nth-child(3) i { color: var(--accent-magenta); }
+        .account-menu-item .text {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .account-menu-item .arrow {
+            font-size: 12px;
+            color: #4a5a74;
+        }
+        .dark-theme .account-menu-item .arrow {
+            color: #90a4ae;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes glowPulse {
+            0% {
+                box-shadow: 0 0 8px var(--shadow-color), 0 0 12px var(--shadow-color);
+            }
+            50% {
+                box-shadow: 0 0 20px var(--shadow-color), 0 0 30px var(--shadow-color);
+            }
+            100% {
+                box-shadow: 0 0 8px var(--shadow-color), 0 0 12px var(--shadow-color);
+            }
+        }
+        @keyframes fadeInSlide {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .page.active {
+            animation: fadeIn 0.4s ease-out;
+        }
+		.data-labels {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.data-label {
+    padding: 4px 8px;
+    border-radius: 12px;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid var(--border-color);
+}
+    </style>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <div class="user-header">
+            <button class="theme-toggle" aria-label="切换主题">
+                <i class="fas fa-moon"></i>
+            </button>
+            <div style="display: flex; align-items: center; margin-top: 10px;">
+                <div class="user-avatar">
+                    <img src="https://ss0.bdstatic.com/70cFvXSh_Q1YnxGkpoWK1HF6hhy/it/u=3364593842,1055667852&fm=253&gp=0.jpg" alt="用户头像">
+                </div>
+                <div class="user-info">
+                    <div class="user-name">
+                        朱卫 <span class="badge">司管家</span>
+                    </div>
+                    <div class="user-account">账户: 13776679666</div>
+                </div>
+            </div>
+        </div>
+        <div class="content">
+            <div class="page active" id="home-page">
+                <div class="page-title">
+                    <i class="fas fa-home"></i> 首页
+                </div>
+                <div class="dashboard-section quick-menu-section">
+                    <h2><i class="fas fa-tachometer-alt"></i> 业务总览</h2>
+                    <div class="metrics-row">
+                        <div class="metric-item" data-type="vehicle" onclick="updateChart('vehicle')">
+                            <i class="fas fa-car"></i>
+                            <div class="metric-value">823</div>
+                            <div class="metric-label">车辆总数</div>
+                        </div>
+                        <div class="metric-item" data-type="contract" onclick="updateChart('contract')">
+                            <i class="fas fa-file-contract"></i>
+                            <div class="metric-value">756</div>
+                            <div class="metric-label">合同总数</div>
+                        </div>
+                        <div class="metric-item" data-type="customer" onclick="updateChart('customer')">
+                            <i class="fas fa-users"></i>
+                            <div class="metric-value">866</div>
+                            <div class="metric-label">客户总数</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-section common-apps-section collapsed">
+                    <h2 onclick="toggleCommonApps()"><i class="fas fa-bolt"></i> 常用应用</h2>
+                    <div class="quick-menu">
+                        <div class="menu-item">
+                            <i class="fas fa-user-tie"></i>
+                            <span>客户档案</span>
+                        </div>
+                        <div class="menu-item">
+                            <i class="fas fa-car"></i>
+                            <span>车辆档案</span>
+                        </div>
+                        <div class="menu-item">
+                            <i class="fas fa-file-contract"></i>
+                            <span>合同档案</span>
+                        </div>
+                        <div class="menu-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>工作审批</span>
+                        </div>
+                        <div class="menu-item">
+                            <i class="fas fa-tasks"></i>
+                            <span>代收代办</span>
+                        </div>
+                        <div class="menu-item">
+                            <i class="fas fa-th-list"></i>
+                            <span>全部功能</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-section chart-section">
+                    <h2 id="chart-title"><i class="fas fa-chart-pie"></i> 合同类型</h2>
+					<div id="chart-data-labels" class="data-labels"></div> <!-- 新增的数据标签容器 -->
+                    <div class="chart-container">
+                        <div id="contractChart" style="width: 100%; height: 100%;"></div>
+                    </div>
+                </div>
+                <div class="dashboard-section">
+                    <h2><i class="fas fa-chart-line"></i> 关键指标</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="number warning">10.23%</div>
+                            <div class="label">车辆空置率</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number success">90%</div>
+                            <div class="label">车辆营运率</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number warning">11.38%</div>
+                            <div class="label">合同逾期率</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number success">100%</div>
+                            <div class="label">合同续约率</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number warning">25%</div>
+                            <div class="label">客户流失率</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number success">41.67%</div>
+                            <div class="label">客户增长率</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="page" id="business-page">
+                <div class="page-title">
+                    <i class="fas fa-briefcase"></i> 业务
+                </div>
+                <div class="business-tabs">
+                    <div class="business-tab active" data-tab="operation">
+                        <i class="fas fa-users"></i> 运营
+                    </div>
+                    <div class="business-tab" data-tab="vehicle">
+                        <i class="fas fa-car"></i> 车务
+                    </div>
+                    <div class="business-tab" data-tab="management">
+                        <i class="fas fa-cog"></i> 管理
+                    </div>
+                </div>
+                <div class="submenu-list" id="business-submenu"></div>
+            </div>
+            <div class="page" id="hardware-page">
+                <div class="page-title">
+                    <i class="fas fa-microchip"></i> 智能硬件
+                </div>
+                <!-- 智能硬件页面的子菜单项 -->
+<div class="submenu-list">
+    <div class="submenu-item">
+        <i class="fas fa-map-marker-alt" style="color: var(--accent-color);"></i>
+        <span class="text">车辆定位</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-link" style="color: var(--primary-cyan);"></i>
+        <span class="text">设备绑定</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-list-alt" style="color: var(--accent-magenta);"></i>
+        <span class="text">指令记录</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+</div>
+            </div>
+            <div class="page" id="stats-page">
+                <div class="page-title">
+                    <i class="fas fa-chart-bar"></i> 数据统计
+                </div>
+                
+                    <!-- 数据统计页面的子菜单项 -->
+<div class="submenu-list">
+    <div class="submenu-item">
+        <i class="fas fa-clipboard-check" style="color: var(--accent-green);"></i>
+        <span class="text">车辆年检</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-exclamation-circle" style="color: var(--accent-orange);"></i>
+        <span class="text">车辆违章</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-shield-alt" style="color: var(--accent-purple);"></i>
+        <span class="text">车辆保险</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-chart-pie" style="color: var(--accent-color);"></i>
+        <span class="text">车辆统计</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-id-card-alt" style="color: var(--primary-cyan);"></i>
+        <span class="text">资格证统计</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-file-signature" style="color: var(--accent-magenta);"></i>
+        <span class="text">合同统计</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+    <div class="submenu-item">
+        <i class="fas fa-money-bill-wave" style="color: var(--accent-green);"></i>
+        <span class="text">财务统计</span>
+        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+    </div>
+</div>
+            </div>
+            <div class="page" id="my-page">
+                <div class="page-title">
+                    <i class="fas fa-user"></i> 我的
+                </div>
+                <div class="my-account-menu">
+                    <div class="account-menu-item">
+                        <i class="fas fa-file-alt"></i>
+                        <span class="text">用户协议</span>
+                        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+                    </div>
+                    <div class="account-menu-item">
+                        <i class="fas fa-lock"></i>
+                        <span class="text">隐私政策</span>
+                        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+                    </div>
+                    <div class="account-menu-item">
+                        <i class="fas fa-info-circle"></i>
+                        <span class="text">应用版本</span>
+                        <span class="arrow">v1.0.0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-bar">
+            <div class="tab-item active" data-page="home">
+                <div class="tab-icon"><i class="fas fa-home"></i></div>
+                <div>首页</div>
+            </div>
+            <div class="tab-item" data-page="business">
+                <div class="tab-icon"><i class="fas fa-briefcase"></i></div>
+                <div>业务</div>
+            </div>
+            <div class="tab-item" data-page="hardware">
+                <div class="tab-icon"><i class="fas fa-microchip"></i></div>
+                <div>智能硬件</div>
+            </div>
+            <div class="tab-item" data-page="stats">
+                <div class="tab-icon"><i class="fas fa-chart-bar"></i></div>
+                <div>数据统计</div>
+            </div>
+            <div class="tab-item" data-page="my">
+                <div class="tab-icon"><i class="fas fa-user"></i></div>
+                <div>我的</div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const submenuData = {
+            operation: [
+                { icon: 'fas fa-user-plus', text: '司机招募', color: 'var(--accent-color)' },
+                { icon: 'fas fa-clipboard-list', text: '招募记录', color: 'var(--primary-cyan)' },
+                { icon: 'fas fa-search', text: '线索司机', color: 'var(--accent-magenta)' },
+                { icon: 'fas fa-camera', text: '照片上传', color: 'var(--accent-green)' },
+                { icon: 'fas fa-video', text: '视频上传', color: 'var(--accent-orange)' },
+                { icon: 'fas fa-id-card', text: '司机人脸认证', color: 'var(--accent-purple)' }
+            ],
+            vehicle: [
+                { icon: 'fas fa-car-side', text: '车辆验车', color: 'var(--accent-color)' },
+                { icon: 'fas fa-traffic-light', text: '司机违章明细', color: 'var(--primary-cyan)' },
+                { icon: 'fas fa-oil-can', text: '车辆维保', color: 'var(--accent-magenta)' },
+                { icon: 'fas fa-warehouse', text: '库存明细', color: 'var(--accent-green)' },
+                { icon: 'fas fa-id-badge', text: '车牌管理', color: 'var(--accent-orange)' }
+            ],
+            management: [
+                { icon: 'fas fa-user-tie', text: '客户档案', color: 'var(--accent-color)' },
+                { icon: 'fas fa-car', text: '车辆档案', color: 'var(--primary-cyan)' },
+                { icon: 'fas fa-file-contract', text: '合同档案', color: 'var(--accent-magenta)' },
+                { icon: 'fas fa-file-invoice-dollar', text: '应收单', color: 'var(--accent-green)' },
+                { icon: 'fas fa-check-circle', text: '工作审批', color: 'var(--accent-orange)' },
+                { icon: 'fas fa-tasks', text: '代收代办', color: 'var(--accent-purple)' }
+            ]
+        };
+        function renderSubmenu(activeTab) {
+            const submenuContainer = document.getElementById('business-submenu');
+            submenuContainer.classList.add('submenu-transition');
+            submenuContainer.innerHTML = '';
+            let order;
+            if (activeTab === 'vehicle') {
+                order = ['vehicle', 'operation', 'management'];
+            } else if (activeTab === 'management') {
+                order = ['management', 'vehicle', 'operation'];
+            } else {
+                order = ['operation', 'vehicle', 'management'];
+            }
+            order.forEach((category, categoryIndex) => {
+                submenuData[category].forEach((item, itemIndex) => {
+                    const submenuItem = document.createElement('div');
+                    submenuItem.className = 'submenu-item';
+                    if (itemIndex === 0 && categoryIndex > 0) {
+                        submenuItem.classList.add('first-in-category');
+                    }
+                    submenuItem.innerHTML = `
+                        <i class="${item.icon}" style="color: ${item.color}"></i>
+                        <span class="text">${item.text}</span>
+                        <span class="arrow"><i class="fas fa-chevron-right"></i></span>
+                    `;
+                    submenuContainer.appendChild(submenuItem);
+                });
+            });
+            document.querySelectorAll('.submenu-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    this.style.background = 'linear-gradient(145deg, var(--accent-color), #1e90ff)';
+                    setTimeout(() => {
+                        this.style.background = '';
+                        alert('正在跳转到: ' + this.querySelector('.text').textContent);
+                    }, 200);
+                });
+            });
+            setTimeout(() => {
+                submenuContainer.classList.remove('submenu-transition');
+            }, 300);
+        }
+        const getPie3D = (pieData, internalDiameterRatio, distance, alpha, pieHeight, opacity = 1) => {
+            const series = [];
+            let sumValue = 0;
+            let startValue = 0;
+            let endValue = 0;
+            let legendData = [];
+            let legendBfb = [];
+            const k = 1 - internalDiameterRatio;
+            pieData.sort((a, b) => b.value - a.value);
+            for (let i = 0; i < pieData.length; i++) {
+                sumValue += pieData[i].value;
+                const seriesItem = {
+                    name: typeof pieData[i].name === 'undefined' ? `series${i}` : pieData[i].name,
+                    type: 'surface',
+                    parametric: true,
+                    wireframe: { show: false },
+                    pieData: pieData[i],
+                    pieStatus: { selected: false, hovered: false, k: k },
+                    center: ['50%', '50%'],
+                    label: {
+                        show: true,
+                        position: 'outside',
+                        formatter: function(params) {
+                            const data = params.data;
+                            const percent = ((data.endRatio - data.startRatio) * 100).toFixed(1);
+                            return `${data.name}\n${data.value} (${percent}%)`;
+                        },
+                        color: '#333',
+                        fontSize: 18,
+                        fontWeight: 'bold',
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        padding: [8, 10],
+                        borderRadius: 6,
+                        borderColor: '#666',
+                        borderWidth: 1.5,
+                        distance: 30
+                    },
+                    labelLine: {
+                        show: true,
+                        length: 20,
+                        length2: 30,
+                        lineStyle: { width: 2.5, color: '#555' }
+                    }
+                };
+                if (typeof pieData[i].itemStyle !== 'undefined') {
+                    const itemStyle = {};
+                    itemStyle.color = typeof pieData[i].itemStyle.color !== 'undefined' ? pieData[i].itemStyle.color : opacity;
+                    itemStyle.opacity = typeof pieData[i].itemStyle.opacity !== 'undefined' ? pieData[i].itemStyle.opacity : opacity;
+                    seriesItem.itemStyle = itemStyle;
+                }
+                series.push(seriesItem);
+            }
+            legendData = [];
+            legendBfb = [];
+            for (let i = 0; i < series.length; i++) {
+                endValue = startValue + series[i].pieData.value;
+                series[i].pieData.startRatio = startValue / sumValue;
+                series[i].pieData.endRatio = endValue / sumValue;
+                series[i].parametricEquation = getParametricEquation(
+                    series[i].pieData.startRatio,
+                    series[i].pieData.endRatio,
+                    false,
+                    false,
+                    k,
+                    series[i].pieData.value
+                );
+                startValue = endValue;
+                const bfb = fomatFloat(series[i].pieData.value / sumValue, 4);
+                legendData.push({ name: series[i].name, value: bfb });
+                legendBfb.push({ name: series[i].name, value: bfb });
+            }
+            const boxHeight = getHeight3D(series, pieHeight);
+            const option = {
+                legend: {
+                    show: true,
+                    position: 'bottom',
+                    orient: 'horizontal',
+                    bottom: 10,
+                    itemGap: 10,
+                    textStyle: {
+                        color: document.body.classList.contains('light-theme') ? '#1a2a44' : '#e6f0fa',
+                        fontSize: 12
+                    },
+                    icon: 'circle'
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(59, 130, 246, 0.9)',
+                    borderRadius: 8,
+                    textStyle: { color: '#fff', fontSize: 12 },
+                    formatter: params => {
+                        if (params.seriesName !== 'mouseoutSeries' && params.seriesName !== 'pie2d') {
+                            const bfb = ((option.series[params.seriesIndex].pieData.endRatio -
+                                option.series[params.seriesIndex].pieData.startRatio) * 100).toFixed(2);
+                            return `${params.seriesName}<br/><span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:${params.color};"></span>${bfb}%`;
+                        }
+                    }
+                },
+                xAxis3D: { min: -1, max: 1 },
+                yAxis3D: { min: -1, max: 1 },
+                zAxis3D: { min: -1, max: 1 },
+                grid3D: {
+                    show: false,
+                    boxHeight: boxHeight,
+                    viewControl: {
+                        alpha,
+                        distance,
+                        rotateSensitivity: 1,
+                        zoomSensitivity: 1,
+                        panSensitivity: 0,
+                        autoRotate: true,
+                        center: [0, -20, 0]
+                    }
+                },
+                series: series
+            };
+            return option;
+        };
+        const getParametricEquation = (startRatio, endRatio, isSelected, isHovered, k, h) => {
+            const midRatio = (startRatio + endRatio) / 2;
+            const startRadian = startRatio * Math.PI * 2;
+            const endRadian = endRatio * Math.PI * 2;
+            const midRadian = midRatio * Math.PI * 2;
+            if (startRatio === 0 && endRatio === 1) {
+                isSelected = false;
+            }
+            k = typeof k !== 'undefined' ? k : 1 / 3;
+            const offsetX = isSelected ? Math.cos(midRadian) * 0.1 : 0;
+            const offsetY = isSelected ? Math.sin(midRadian) * 0.1 : 0;
+            const hoverRate = isHovered ? 1.05 : 1;
+            return {
+                u: { min: -Math.PI, max: Math.PI * 3, step: Math.PI / 32 },
+                v: { min: 0, max: Math.PI * 2, step: Math.PI / 20 },
+                x: function(u, v) {
+                    if (u < startRadian) {
+                        return offsetX + Math.cos(startRadian) * (1 + Math.cos(v) * k) * hoverRate;
+                    }
+                    if (u > endRadian) {
+                        return offsetX + Math.cos(endRadian) * (1 + Math.cos(v) * k) * hoverRate;
+                    }
+                    return offsetX + Math.cos(u) * (1 + Math.cos(v) * k) * hoverRate;
+                },
+                y: function(u, v) {
+                    if (u < startRadian) {
+                        return offsetY + Math.sin(startRadian) * (1 + Math.cos(v) * k) * hoverRate;
+                    }
+                    if (u > endRadian) {
+                        return offsetY + Math.sin(endRadian) * (1 + Math.cos(v) * k) * hoverRate;
+                    }
+                    return offsetY + Math.sin(u) * (1 + Math.cos(v) * k) * hoverRate;
+                },
+                z: function(u, v) {
+                    if (u < -Math.PI * 0.5) {
+                        return Math.sin(u);
+                    }
+                    if (u > Math.PI * 2.5) {
+                        return Math.sin(u) * h * 0.1;
+                    }
+                    return Math.sin(v) > 0 ? 1 * h * 0.1 : -1;
+                }
+            };
+        };
+        const getHeight3D = (series, height) => {
+            series.sort((a, b) => b.pieData.value - a.pieData.value);
+            return (height * 25) / series[0].pieData.value;
+        };
+        const fomatFloat = (num, n) => {
+            let f = parseFloat(num);
+            if (isNaN(f)) {
+                return false;
+            }
+            f = Math.round(num * Math.pow(10, n)) / Math.pow(10, n);
+            let s = f.toString();
+            let rs = s.indexOf('.');
+            if (rs < 0) {
+                rs = s.length;
+                s += '.';
+            }
+            while (s.length <= rs + n) {
+                s += '0';
+            }
+            return s;
+        };
+        const body = document.body;
+        const themeToggle = document.querySelector('.theme-toggle');
+        const themeIcon = themeToggle.querySelector('i');
+        function setTheme(theme) {
+            if (theme === 'light') {
+                body.classList.remove('dark-theme');
+                body.classList.add('light-theme');
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.classList.remove('light-theme');
+                body.classList.add('dark-theme');
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(savedTheme);
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = body.classList.contains('light-theme') ? 'light' : 'dark';
+            setTheme(currentTheme === 'light' ? 'dark' : 'light');
+        });
+        document.querySelectorAll('.tab-item').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                const pageId = this.getAttribute('data-page') + '-page';
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(pageId).classList.add('active');
+                const headerText = this.querySelector('div:last-child').textContent;
+                const headerIcon = this.querySelector('.tab-icon i').className;
+                document.querySelector('.page-title').innerHTML = `<i class="${headerIcon}"></i> ${headerText}`;
+                const userHeader = document.querySelector('.user-header');
+                if (pageId === 'home-page') {
+                    userHeader.classList.remove('compact');
+                } else {
+                    userHeader.classList.add('compact');
+                }
+            });
+        });
+        document.querySelectorAll('.business-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.business-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                const activeTab = this.getAttribute('data-tab');
+                renderSubmenu(activeTab);
+            });
+        });
+        document.querySelectorAll('.menu-item, .account-menu-item').forEach(item => {
+            item.addEventListener('click', function() {
+                this.style.background = 'linear-gradient(145deg, var(--accent-color), #1e90ff)';
+                setTimeout(() => {
+                    this.style.background = '';
+                    alert('正在跳转到: ' + (this.querySelector('.text') ? this.querySelector('.text').textContent : this.querySelector('span').textContent));
+                }, 200);
+            });
+        });
+        function toggleCommonApps() {
+            const commonAppsSection = document.querySelector('.common-apps-section');
+            commonAppsSection.classList.toggle('collapsed');
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            const statCards = document.querySelectorAll('.stat-card');
+            statCards.forEach((card, index) => {
+                setTimeout(() => {
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(20px)';
+                    setTimeout(() => {
+                        card.style.transition = 'all 0.5s ease';
+                        card.style.opacity = '1';
+                        card.style.transform = 'translateY(0)';
+                    }, 100 * index);
+                }, 300);
+            });
+            renderSubmenu('operation');
+        });
+        document.addEventListener('DOMContentLoaded', function() {
+            let myChart = null;
+            const initChart = () => {
+                const chartDom = document.getElementById('contractChart');
+                if (!chartDom) {
+                    console.error('Chart container not found');
+                    return;
+                }
+                myChart = echarts.init(chartDom);
+                const getChartData = (type) => {
+                    if (type === 'vehicle') {
+                        return [
+                            { name: '经租', value: 230, itemStyle: { color: '#40E0D0' } },
+                            { name: '融租', value: 490, itemStyle: { color: '#00FFFF' } },
+                            { name: '挂靠', value: 75, itemStyle: { color: '#9370DB' } },
+                            { name: '库存', value: 28, itemStyle: { color: '#FFA500' } }
+                        ];
+                    } else if (type === 'customer') {
+                        return [
+                            { name: '营运中司机', value: 820, itemStyle: { color: '#00CED1' } },
+                            { name: '非营运司机', value: 46, itemStyle: { color: '#FFA500' } }
+                        ];
+                    } else {
+                        return [
+                            { name: '经租合同', value: 230, itemStyle: { color: '#40E0D0' } },
+                            { name: '融租合同', value: 490, itemStyle: { color: '#00FFFF' } },
+                            { name: '服务合同', value: 36, itemStyle: { color: '#9370DB' } }
+                        ];
+                    }
+                };
+                const adjustParamsByWindowSize = () => {
+                    const width = window.innerWidth;
+                    let distance = 180;
+                    let pieHeight = 12;
+                    if (width < 768) {
+                        distance = 200;
+                        pieHeight = 12;
+                    } else if (width < 1024) {
+                        distance = 180;
+                        pieHeight = 11;
+                    }
+                    return { distance, pieHeight };
+                };
+                window.updateChart = function(type) {
+                    try {
+                        const chartTitle = document.getElementById('chart-title');
+                        const metricItems = document.querySelectorAll('.metric-item');
+                        metricItems.forEach(item => item.classList.remove('active'));
+                        const pieData = getChartData(type);
+                        const { distance, pieHeight } = adjustParamsByWindowSize();
+                        if (type === 'vehicle') {
+                            chartTitle.innerHTML = '<i class="fas fa-chart-pie"></i> 车辆分布';
+                            document.querySelector('.metric-item[data-type="vehicle"]').classList.add('active');
+                        } else if (type === 'customer') {
+                            chartTitle.innerHTML = '<i class="fas fa-chart-pie"></i> 客户构成';
+                            document.querySelector('.metric-item[data-type="customer"]').classList.add('active');
+                        } else {
+                            chartTitle.innerHTML = '<i class="fas fa-chart-pie"></i> 合同类型';
+                            document.querySelector('.metric-item[data-type="contract"]').classList.add('active');
+                        }
+						    // 更新数据标签
+    const labelsContainer = document.getElementById('chart-data-labels');
+    labelsContainer.innerHTML = '';
+    
+    if (type === 'vehicle') {
+        const vehicleData = [
+            { name: '经租', value: 230, color: '#40E0D0' },
+            { name: '融租', value: 490, color: '#00FFFF' },
+            { name: '挂靠', value: 75, color: '#9370DB' },
+            { name: '库存', value: 28, color: '#FFA500' }
+        ];
+        
+        vehicleData.forEach(item => {
+            const label = document.createElement('span');
+            label.className = 'data-label';
+            label.innerHTML = `${item.name} <strong>${item.value}</strong>`;
+            label.style.borderColor = item.color;
+            labelsContainer.appendChild(label);
+        });
+        
+    } else if (type === 'contract') {
+        const contractData = [
+            { name: '经租', value: 230, color: '#40E0D0' },
+            { name: '融租', value: 490, color: '#00FFFF' },
+            { name: '服务', value: 36, color: '#9370DB' }
+        ];
+        
+        contractData.forEach(item => {
+            const label = document.createElement('span');
+            label.className = 'data-label';
+            label.innerHTML = `${item.name} <strong>${item.value}</strong>`;
+            label.style.borderColor = item.color;
+            labelsContainer.appendChild(label);
+        });
+        
+    } else if (type === 'customer') {
+        const customerData = [
+            { name: '营运中', value: 820, color: '#00CED1' },
+            { name: '非营运', value: 46, color: '#FFA500' }
+        ];
+        
+        customerData.forEach(item => {
+            const label = document.createElement('span');
+            label.className = 'data-label';
+            label.innerHTML = `${item.name} <strong>${item.value}</strong>`;
+            label.style.borderColor = item.color;
+            labelsContainer.appendChild(label);
+        });
+    }
+                        const option = getPie3D(pieData, 0.6, distance, 35, pieHeight, 1);
+                        myChart.setOption(option, true);
+                    } catch (error) {
+                        console.error('Error updating chart:', error);
+                    }
+                };
+                const defaultType = 'contract';
+                const chartTitle = document.getElementById('chart-title');
+                chartTitle.innerHTML = '<i class="fas fa-chart-pie"></i> 合同类型';
+                const pieData = getChartData(defaultType);
+                const { distance, pieHeight } = adjustParamsByWindowSize();
+                const option = getPie3D(pieData, 0.6, distance, 35, pieHeight, 1);
+                myChart.setOption(option, true);
+                const handleResize = () => {
+                    if (myChart) {
+                        myChart.resize();
+                        const currentType = document.querySelector('.metric-item.active')?.getAttribute('data-type') || defaultType;
+                        updateChart(currentType);
+                    }
+                };
+                const debounce = (func, wait) => {
+                    let timeout;
+                    return function() {
+                        const context = this;
+                        const args = arguments;
+                        clearTimeout(timeout);
+                        timeout = setTimeout(() => {
+                            func.apply(context, args);
+                        }, wait);
+                    };
+                };
+                window.addEventListener('resize', debounce(handleResize, 200));
+                body.addEventListener('transitionend', () => {
+                    try {
+                        const option = myChart.getOption();
+                        option.legend[0].textStyle.color = body.classList.contains('light-theme') ? '#1a2a44' : '#e6f0fa';
+                        myChart.setOption(option);
+                    } catch (error) {
+                        console.error('Error updating chart theme:', error);
+                    }
+                });
+            };
+            initChart();
+        });
+		if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(registration => {
+          console.log('Service Worker 注册成功，作用域: ', registration.scope);
+        })
+        .catch(error => {
+          console.log('Service Worker 注册失败: ', error);
+        });
+    });
+  }
+    </script>
+</body>
+</html>
