@@ -1,5 +1,5 @@
 // 定义缓存名称
-const CACHE_NAME = 'vehicle-management-cache-v1';
+const CACHE_NAME = 'vehicle-management-cache-v2';
 
 // 需要缓存的资源列表
 const urlsToCache = [
